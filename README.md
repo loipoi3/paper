@@ -7,3 +7,5 @@ Execute the following command in your terminal:
 ```bash
 export PYTHONPATH="${PYTHONPATH}:/path/to/the/repository"
 ```
+
+Also download the necessary datasets from Google Drive: https://drive.google.com/drive/folders/1G3WxN1l4DK3Xy9ngXqoqMqpc_HWH3-1M?usp=sharing and place the datasets folder in the code folder.
