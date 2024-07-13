@@ -3,6 +3,7 @@ import torch.nn.functional as f
 import numpy as np
 from tqdm import tqdm
 import time
+from code.config import tracker
 
 
 class MLP:
@@ -43,6 +44,7 @@ class MLP:
             weights.append(weight)
         return weights
 
+    @tracker.track_runtime
     def _eval_model(self, x: torch.Tensor) -> torch.Tensor:
         """
         Evaluates the MLP on the input data.
@@ -116,6 +118,13 @@ class MLP:
                 self.errors_test.append(current_test_loss.item())
             self.times.append(time.time() - start_time)
 
+        # Print the average execution time for each tracked function
+        print(f"Average execution time for _eval_model: {tracker.get_average_time('_eval_model'):.4f} seconds")
+        print(f"Average execution time for _log_loss: {tracker.get_average_time('_log_loss'):.4f} seconds")
+
+        # Reset the execution times
+        tracker.execution_times = {}
+
     def predict(self, x: np.ndarray, threshold: float = None, num_classes: int = 1) -> np.ndarray:
         """
         Predicts the output for the given input data.
@@ -139,6 +148,7 @@ class MLP:
         return y_pred
 
     @staticmethod
+    @tracker.track_runtime
     def _log_loss(y_true: torch.Tensor, y_pred: torch.Tensor) -> torch.Tensor:
         """
         Computes the log loss between true and predicted labels.

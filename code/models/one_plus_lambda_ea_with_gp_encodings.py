@@ -10,6 +10,8 @@ import pickle
 import os
 from tqdm import tqdm
 
+from code.config import tracker
+
 
 class GeneticAlgorithmModel:
     """
@@ -110,6 +112,7 @@ class GeneticAlgorithmModel:
         self.toolbox.register("mutate", gp.mutNodeReplacement, pset=self.pset)
 
     @staticmethod
+    @tracker.track_runtime
     def _safe_div(x: float, y: float) -> float:
         """
         Safely performs division, returning 1 if division by zero occurs.
@@ -128,6 +131,7 @@ class GeneticAlgorithmModel:
             return result
 
     @staticmethod
+    @tracker.track_runtime
     def _safe_atan2(y: float, x: float) -> float:
         """
         Safely computes the arc tangent of y/x, returning 1 if both inputs are zero.
@@ -144,6 +148,7 @@ class GeneticAlgorithmModel:
         return math.atan2(y, x)
 
     @staticmethod
+    @tracker.track_runtime
     def _float_lt(a: float, b: float) -> float:
         """
         Returns 1.0 if a < b, else 0.0.
@@ -158,6 +163,7 @@ class GeneticAlgorithmModel:
         return 1.0 if operator.lt(a, b) else 0.0
 
     @staticmethod
+    @tracker.track_runtime
     def _float_gt(a: float, b: float) -> float:
         """
         Returns 1.0 if a > b, else 0.0.
@@ -172,6 +178,7 @@ class GeneticAlgorithmModel:
         return 1.0 if operator.gt(a, b) else 0.0
 
     @staticmethod
+    @tracker.track_runtime
     def _float_ge(a: float, b: float) -> float:
         """
         Returns 1.0 if a >= b, else 0.0.
@@ -186,6 +193,7 @@ class GeneticAlgorithmModel:
         return 1.0 if operator.ge(a, b) else 0.0
 
     @staticmethod
+    @tracker.track_runtime
     def _float_le(a: float, b: float) -> float:
         """
         Returns 1.0 if a <= b, else 0.0.
@@ -200,6 +208,7 @@ class GeneticAlgorithmModel:
         return 1.0 if operator.le(a, b) else 0.0
 
     @staticmethod
+    @tracker.track_runtime
     def _safe_fmod(x: float, y: float) -> float:
         """
         Safely performs modulo operation, returning 1.0 if denominator is zero.
@@ -216,6 +225,7 @@ class GeneticAlgorithmModel:
         return math.fmod(x, y)
 
     @staticmethod
+    @tracker.track_runtime
     def _sigmoid(x: np.ndarray) -> float:
         """
         Computes the sigmoid function.
@@ -229,6 +239,7 @@ class GeneticAlgorithmModel:
         x_clipped = np.clip(x, -500, 500)
         return 1 / (1 + np.exp(-x_clipped))
 
+    @tracker.track_runtime
     def _evaluate_individual(self, individual, x: np.ndarray, y: np.ndarray) -> tuple:
         """
         Evaluates an individual in the population.
@@ -330,6 +341,21 @@ class GeneticAlgorithmModel:
             if save_checkpoint:
                 GeneticAlgorithmModel._save_checkpoint(champion, gen, train_losses, test_losses, time_list,
                                                        save_checkpoint_path)
+
+        # Print the average execution time for each tracked function
+        print(f"Average execution time for _safe_div: {tracker.get_average_time('_safe_div'):.4f} seconds")
+        print(f"Average execution time for _safe_atan2: {tracker.get_average_time('_safe_atan2'):.4f} seconds")
+        print(f"Average execution time for _float_lt: {tracker.get_average_time('_float_lt'):.4f} seconds")
+        print(f"Average execution time for _float_gt: {tracker.get_average_time('_float_gt'):.4f} seconds")
+        print(f"Average execution time for _float_ge: {tracker.get_average_time('_float_ge'):.4f} seconds")
+        print(f"Average execution time for _float_le: {tracker.get_average_time('_float_le'):.4f} seconds")
+        print(f"Average execution time for _safe_fmod: {tracker.get_average_time('_safe_fmod'):.4f} seconds")
+        print(f"Average execution time for _sigmoid: {tracker.get_average_time('_sigmoid'):.4f} seconds")
+        print(
+            f"Average execution time for _evaluate_individual: {tracker.get_average_time('_evaluate_individual'):.4f} seconds")
+
+        # Reset the execution times
+        tracker.execution_times = {}
 
         return champion, train_losses, test_losses, time_list
 
