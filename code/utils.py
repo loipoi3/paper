@@ -1,3 +1,5 @@
+import logging
+
 import matplotlib.pyplot as plt
 
 
@@ -48,3 +50,8 @@ def summarize_best_loss_performance(train_losses: list, test_losses: list, time_
     print("Indexes of Best Test Loss:", best_test_indexes)
     print("Total Times up to these iterations (seconds):", total_times_up_to_best_test)
     return best_test_loss
+
+def init_logger():
+    return logging.getLogger("C0DE")
+
+logger = init_logger()

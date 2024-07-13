@@ -5,7 +5,7 @@ from tqdm import tqdm
 from code.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.model_selection import StratifiedKFold
-
+import time
 
 def run_one_plus_lambda_ea_with_gp(x: np.ndarray, y: np.ndarray, args) -> None:
     """
@@ -30,6 +30,7 @@ def run_one_plus_lambda_ea_with_gp(x: np.ndarray, y: np.ndarray, args) -> None:
     lambd = args.ea_lambda if args.ea_lambda is not None else 2
     save_checkpoint_path = args.ea_save_checkpoint_path if args.ea_save_checkpoint_path is not None else ""
 
+    start = time.time()
     # Cross-validation
     skf = StratifiedKFold(n_splits=n_splits)
 
@@ -84,8 +85,10 @@ def run_one_plus_lambda_ea_with_gp(x: np.ndarray, y: np.ndarray, args) -> None:
     avg_test_log_losses = overall_test_log_losses / n_splits
     avg_time_list = total_time_list / n_splits
 
+    end = time.time()
+
     print(
-        f"Accuracy={overall_accuracy:.4f}, Precision={overall_precision:.4f}, Recall={overall_recall:.4f}, F1-score={overall_f1_score:.4f}")
+        f"Accuracy={overall_accuracy:.4f}, Precision={overall_precision:.4f}, Recall={overall_recall:.4f}, F1-score={overall_f1_score:.4f}, Time: {end-start}")
 
     results = {'train_losses': avg_train_log_losses.tolist(), 'test_losses': avg_test_log_losses.tolist(),
                'times': avg_time_list.tolist()}

@@ -4,7 +4,7 @@ from typing import Any
 from code.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import numpy as np
-
+import time
 
 def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray,
                                    args: Any) -> None:
@@ -31,6 +31,8 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     lambd = args.ea_lambda if args.ea_lambda is not None else 4
     save_checkpoint_path = args.ea_save_checkpoint_path if args.ea_save_checkpoint_path is not None else ""
 
+    start = time.time()
+
     # Initialize the Genetic Algorithm model
     model = GeneticAlgorithmModel(x_train, y_train, x_test, y_test, tree_depth=tree_depth,
                                   primitive_set=primitive_set, terminal_set=terminal_set,
@@ -43,9 +45,9 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     precision_test = precision_score(y_test, y_pred_test, average='weighted', zero_division=0)
     recall_test = recall_score(y_test, y_pred_test, average='weighted')
     f1_test = f1_score(y_test, y_pred_test, average='weighted')
-
+    end = time.time()
     print(
-        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}")
+        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}, Time: {end-start}")
 
     results = {'train_losses': train_losses, 'test_losses': test_losses, 'times': time_list}
 
