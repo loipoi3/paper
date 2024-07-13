@@ -9,7 +9,6 @@ import random
 import pickle
 import os
 from tqdm import tqdm
-from functools import lru_cache
 import hashlib
 
 
@@ -58,17 +57,6 @@ class GeneticAlgorithmModel:
         self.cache_hits = 0
         self.cache_misses = 0
 
-    def hash_dict_individual(self, individual):
-        """Create a hash for a dictionary-based individual."""
-        m = hashlib.md5()
-        for key, value in sorted(individual.items()):
-            m.update(str(key).encode())
-            if isinstance(value, gp.PrimitiveTree):
-                m.update(self.hash_tree(value).encode())
-            else:
-                m.update(str(value).encode())
-        return m.hexdigest()
-
     def hash_individual(self, individual):
         if isinstance(individual, gp.PrimitiveTree):
             return self.hash_tree(individual)
@@ -88,23 +76,6 @@ class GeneticAlgorithmModel:
                 m.update(str(node.value).encode())
         return m.hexdigest()
 
-    @lru_cache(maxsize=1024)
-    def _cached_evaluate(self, individual_tuple, x_hash, y_hash):
-        # Here, you would implement your actual evaluation logic
-        # This is just a placeholder - replace with your actual evaluation
-        individual = np.array(individual_tuple)
-        x = self.X_train  # Assuming X_train is stored in the class
-        y = self.y_train  # Assuming y_train is stored in the class
-
-        if self._num_classes == 1:
-            func = self.toolbox.compile(expr=individual)
-            predictions = np.array([GeneticAlgorithmModel._sigmoid(func(*record)) for record in x])
-        else:
-            funcs = [self.toolbox.compile(expr=tree) for tree in individual]
-            predictions = np.array([[func(*record) for func in funcs] for record in x])
-            predictions = softmax(predictions, axis=1)
-
-        return log_loss(y, predictions)
     def _setup_primitives(self):
         """
         Sets up the primitive set for the genetic programming algorithm using a mapping approach to improve readability and efficiency.
