@@ -9,7 +9,8 @@ import random
 import pickle
 import os
 from tqdm import tqdm
-from functools import partial
+from functools import lru_cache
+import hashlib
 
 
 class GeneticAlgorithmModel:
@@ -53,7 +54,57 @@ class GeneticAlgorithmModel:
 
         self.toolbox = base.Toolbox()
         self._setup_toolbox()
+        self.fitness_cache = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
 
+    def hash_dict_individual(self, individual):
+        """Create a hash for a dictionary-based individual."""
+        m = hashlib.md5()
+        for key, value in sorted(individual.items()):
+            m.update(str(key).encode())
+            if isinstance(value, gp.PrimitiveTree):
+                m.update(self.hash_tree(value).encode())
+            else:
+                m.update(str(value).encode())
+        return m.hexdigest()
+
+    def hash_individual(self, individual):
+        if isinstance(individual, gp.PrimitiveTree):
+            return self.hash_tree(individual)
+        elif isinstance(individual, dict):  # For multi-tree individuals
+            return tuple(self.hash_tree(tree) for tree in individual)
+        else:
+            raise TypeError(f"Unsupported individual type: {type(individual)}")
+
+
+    def hash_tree(self, tree):
+        """Create a hash for a GP tree."""
+        m = hashlib.md5()
+        for node in tree:
+            if isinstance(node, gp.Primitive):
+                m.update(node.name.encode())
+            elif isinstance(node, gp.Terminal):
+                m.update(str(node.value).encode())
+        return m.hexdigest()
+
+    @lru_cache(maxsize=1024)
+    def _cached_evaluate(self, individual_tuple, x_hash, y_hash):
+        # Here, you would implement your actual evaluation logic
+        # This is just a placeholder - replace with your actual evaluation
+        individual = np.array(individual_tuple)
+        x = self.X_train  # Assuming X_train is stored in the class
+        y = self.y_train  # Assuming y_train is stored in the class
+
+        if self._num_classes == 1:
+            func = self.toolbox.compile(expr=individual)
+            predictions = np.array([GeneticAlgorithmModel._sigmoid(func(*record)) for record in x])
+        else:
+            funcs = [self.toolbox.compile(expr=tree) for tree in individual]
+            predictions = np.array([[func(*record) for func in funcs] for record in x])
+            predictions = softmax(predictions, axis=1)
+
+        return log_loss(y, predictions)
     def _setup_primitives(self):
         """
         Sets up the primitive set for the genetic programming algorithm using a mapping approach to improve readability and efficiency.
@@ -103,7 +154,7 @@ class GeneticAlgorithmModel:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("compile", gp.compile, pset=self.pset)
         self.toolbox.register("evaluate", self._evaluate_individual)
-        self.toolbox.register("select", tools.selRoulette)
+        self.toolbox.register("select", tools.selTournament, tournsize=1)
         self.toolbox.register("mutate", gp.mutNodeReplacement, pset=self.pset)
 
     @staticmethod
@@ -232,14 +283,45 @@ class GeneticAlgorithmModel:
         return 1 / (1 + np.exp(-x_clipped))
 
     def _evaluate_individual(self, individual, x: np.ndarray, y: np.ndarray) -> tuple:
+        # Create a hash for the individual
+        individual_hash = self.hash_individual(individual)
+
+        # Create hash of x and y
+        x_hash = hash(x.tobytes())
+        y_hash = hash(y.tobytes())
+
+        # Check if this individual has been evaluated before
+        cache_key = (individual_hash, x_hash, y_hash)
+        if cache_key in self.fitness_cache:
+            self.cache_hits += 1
+            return self.fitness_cache[cache_key]
+
+        self.cache_misses += 1
+
+        # If not in cache, evaluate
         if self._num_classes == 1:
-            func = self.toolbox.compile(expr=individual)
-            predictions = GeneticAlgorithmModel._sigmoid(GeneticAlgorithmModel.custom_ufunc(func, *[x[:, i] for i in range(x.shape[1])]))
+            if isinstance(individual, dict):
+                expr = individual['ind']
+            else:
+                expr = individual
+            func = self.toolbox.compile(expr=expr)
+            predictions = np.array([GeneticAlgorithmModel._sigmoid(func(*record)) for record in x])
         else:
-            funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
-            predictions = np.array([GeneticAlgorithmModel.custom_ufunc(f, *[x[:, i] for i in range(x.shape[1])]) for f in funcs]).T
+            if isinstance(individual, dict):
+                trees = individual['ind']
+            else:
+                trees = individual
+            funcs = [self.toolbox.compile(expr=tree) for tree in trees]
+            predictions = np.array([[func(*record) for func in funcs] for record in x])
             predictions = softmax(predictions, axis=1)
-        return log_loss(y, predictions),
+
+        fitness = log_loss(y, predictions)
+
+        # Store in cache
+        self.fitness_cache[cache_key] = (fitness,)
+
+        return (fitness,)
+
     def run(self, lambd: int, max_generations: int, save_checkpoint_path: str, start_checkpoint: str = "",
             save_checkpoint: bool = False) -> tuple:
         """
@@ -321,6 +403,8 @@ class GeneticAlgorithmModel:
 
         return champion, train_losses, test_losses, time_list
 
+    # @njit(object_mode=True)
+    # @jit(nopython=True)
     def make_predictions_with_threshold(self, individual, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         if self._num_classes == 1:
             func = self.toolbox.compile(expr=individual)
