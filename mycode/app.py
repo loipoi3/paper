@@ -1,9 +1,9 @@
 import argparse
-from code.draw_graph import results_getter
-from code.experiments.binary_classification_image_data.main import binary_image_pipeline
-from code.experiments.binary_classification_tabular_data.main import binary_tabular_pipeline
-from code.experiments.multiclass_classification_image_data.main import multiclass_image_pipeline
-from code.experiments.multiclass_classification_tabular_data.main import multiclass_tabular_pipeline
+from mycode.draw_graph import results_getter
+from mycode.experiments.binary_classification_image_data.main import binary_image_pipeline
+from mycode.experiments.binary_classification_tabular_data.main import binary_tabular_pipeline
+from mycode.experiments.multiclass_classification_image_data.main import multiclass_image_pipeline
+from mycode.experiments.multiclass_classification_tabular_data.main import multiclass_tabular_pipeline
 
 
 def main():

@@ -11,7 +11,7 @@ from tqdm import tqdm
 def run_classic_mlp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray,
                     args: Any) -> None:
     """
-    Train a classic MLP model for multiclass classification on tabular data.
+    Train a classic MLP model for multiclass classification on image data.
 
     Args:
         x_train: Training features.
@@ -20,19 +20,19 @@ def run_classic_mlp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray
         y_test: Testing labels.
         args: Command-line arguments with model hyperparameters.
     """
-    print("Classic MLP for the problem of multiclass classification of tabular data:")
+    print("Classic MLP for the problem of multiclass classification of image data:")
 
     # Extract hyperparameters from args
-    n_iterations = args.mlp_with_gd_n_iterations if args.mlp_with_gd_n_iterations is not None else 734
+    n_iterations = args.mlp_with_gd_n_iterations if args.mlp_with_gd_n_iterations is not None else 15
     hidden_layer_sizes = tuple(args.mlp_with_gd_hidden_layers) if args.mlp_with_gd_hidden_layers is not None else (
         10, 10)
-    activation = args.mlp_with_gd_activation if args.mlp_with_gd_activation is not None else "logistic"
+    activation = args.mlp_with_gd_activation if args.mlp_with_gd_activation is not None else "tanh"
     solver = args.mlp_with_gd_solver if args.mlp_with_gd_solver is not None else "sgd"
-    alpha = args.mlp_with_gd_alpha if args.mlp_with_gd_alpha is not None else 0.00012710876052649163
-    learning_rate_init = args.mlp_with_gd_learning_rate_init if args.mlp_with_gd_learning_rate_init is not None else 0.0080252458565383933
-    learning_rate = args.mlp_with_gd_learning_rate if args.mlp_with_gd_learning_rate is not None else "adaptive"
-    batch_size = args.mlp_with_gd_batch_size if args.mlp_with_gd_batch_size is not None else 64
-    tol = args.mlp_with_gd_tol if args.mlp_with_gd_tol is not None else 0.0002348954721998801
+    alpha = args.mlp_with_gd_alpha if args.mlp_with_gd_alpha is not None else 0.00013042052394947776
+    learning_rate_init = args.mlp_with_gd_learning_rate_init if args.mlp_with_gd_learning_rate_init is not None else 0.0014724389615088562
+    learning_rate = args.mlp_with_gd_learning_rate if args.mlp_with_gd_learning_rate is not None else "invscaling"
+    batch_size = args.mlp_with_gd_batch_size if args.mlp_with_gd_batch_size is not None else 128
+    tol = args.mlp_with_gd_tol if args.mlp_with_gd_tol is not None else 2.975703376542151e-05
 
     # Initialize the MLP classifier
     mlp = MLPClassifier(hidden_layer_sizes=hidden_layer_sizes, activation=activation, solver=solver, alpha=alpha,
@@ -67,7 +67,7 @@ def run_classic_mlp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray
 
     results = {'train_losses': train_log_losses, 'test_losses': test_log_losses, 'times': time_list}
 
-    destination = "./results/multiclass_classification_tabular_data"
+    destination = "./results/multiclass_classification_image_data"
     if not os.path.exists(destination):
         os.makedirs(destination)
 
@@ -76,4 +76,4 @@ def run_classic_mlp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray
         json.dump(results, file, indent=4)
 
     print(
-        "Results (train loss list, test loss list, time list) are saved in the file: code/results/multiclass_classification_tabular_data/classic_mlp.json")
+        "Results (train loss list, test loss list, time list) are saved in the file: mycode/results/multiclass_classification_image_data/classic_mlp.json")

@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.model_selection import StratifiedKFold
 from tqdm import tqdm
-from code.models.mlp import MLP
+from mycode.models.mlp import MLP
 
 
 def run_mlp_with_ga(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray, args) -> None:
@@ -97,4 +97,4 @@ def run_mlp_with_ga(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray
         json.dump(results, file, indent=4)
 
     print(
-        "Results (train loss list, test loss list, time list) are saved in the file: code/results/binary_classification_image_data/mlp_with_ga.json")
+        "Results (train loss list, test loss list, time list) are saved in the file: mycode/results/binary_classification_image_data/mlp_with_ga.json")

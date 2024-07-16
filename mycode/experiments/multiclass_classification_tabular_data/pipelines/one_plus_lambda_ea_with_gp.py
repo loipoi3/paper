@@ -1,9 +1,10 @@
 import json
 import os
 from typing import Any
-from code.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
+from mycode.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import numpy as np
+import time
 
 
 def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray,
@@ -35,8 +36,10 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     model = GeneticAlgorithmModel(x_train, y_train, x_test, y_test, tree_depth=tree_depth, primitive_set=primitive_set,
                                   terminal_set=terminal_set, num_classes=len(np.unique(y_train)))
 
+    start = time.time()
     champion, train_losses, test_losses, time_list = model.run(lambd=lambd, max_generations=max_generations,
                                                                save_checkpoint_path=save_checkpoint_path)
+    end = time.time()
 
     y_pred_test = model.make_predictions_with_threshold(champion, x_test)
     accuracy_test = accuracy_score(y_test, y_pred_test)
@@ -45,7 +48,7 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     f1_test = f1_score(y_test, y_pred_test, average='weighted')
 
     print(
-        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}")
+        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}, Time: {end-start}")
 
     results = {'train_losses': train_losses, 'test_losses': test_losses, 'times': time_list}
 
@@ -58,4 +61,4 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
         json.dump(results, file, indent=4)
 
     print(
-        "Results (train loss list, test loss list, time list) are saved in the file: code/results/multiclass_classification_tabular_data/one_plus_lambda_ea_with_gp.json")
+        "Results (train loss list, test loss list, time list) are saved in the file: mycode/results/multiclass_classification_tabular_data/one_plus_lambda_ea_with_gp.json")

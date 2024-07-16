@@ -13,6 +13,6 @@ Also download the necessary datasets from Google Drive: https://drive.google.com
 To run the app, go to the code folder and run the app.py file from it:
 
 ```bash
-cd code
+cd mycode
 python app.py train --task task_name --models list of models for training
 ```

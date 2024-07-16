@@ -1,5 +1,5 @@
 import json
-from code.utils import plot_losses, summarize_best_loss_performance
+from mycode.utils import plot_losses, summarize_best_loss_performance
 
 
 def results_getter(path: str, iter_interval: int):

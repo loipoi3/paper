@@ -9,8 +9,13 @@ import random
 import pickle
 import os
 from tqdm import tqdm
+import hashlib
+import struct
+from mycode.config import tracker
 
-from code.config import tracker
+seed_value = 42
+random.seed(seed_value)
+np.random.seed(seed_value)
 
 
 class GeneticAlgorithmModel:
@@ -41,6 +46,9 @@ class GeneticAlgorithmModel:
         self._num_classes = num_classes
         self._primitive_set = primitive_set
         self._terminal_set = terminal_set
+        self.fitness_cache = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
 
         self.pset = gp.PrimitiveSet("MAIN", x_train.shape[1])
         self._setup_primitives()
@@ -55,49 +63,77 @@ class GeneticAlgorithmModel:
         self.toolbox = base.Toolbox()
         self._setup_toolbox()
 
+    def hash_individual(self, individual):
+        """Create a hash for a GP individual (tree)."""
+        m = hashlib.md5()
+        for node in individual:
+            if isinstance(node, gp.Primitive):
+                m.update(node.name.encode())
+            elif isinstance(node, gp.Terminal):
+                if isinstance(node.value, float):
+                    # Ensure consistent floating-point representation
+                    m.update(bytearray(struct.pack("d", node.value)))
+                else:
+                    m.update(str(node.value).encode())
+        return m.hexdigest()
+
+    def hash_tree(self, trees):
+        """Create a combined hash for multiple GP trees, ensuring all trees contribute to the final hash."""
+        m = hashlib.md5()
+        for tree in trees:
+            tree_hash = self.hash_individual(tree)
+            m.update(tree_hash.encode())
+        return m.hexdigest()
+
+    # def hash_tree(self, tree):
+    #     """Create a hash for a GP tree."""
+    #     m = hashlib.md5()
+    #     for node in tree:
+    #         if isinstance(node, gp.Primitive):
+    #             m.update(node.name.encode())
+    #         elif isinstance(node, gp.Terminal):
+    #             m.update(str(node.value).encode())
+    #     return m.hexdigest()
+
     def _setup_primitives(self):
         """
-        Sets up the primitive set for the genetic programming algorithm.
+        Sets up the primitive set for the genetic programming algorithm using a mapping approach to improve readability and efficiency.
         """
-        if "add" in self._primitive_set:
-            self.pset.addPrimitive(operator.add, 2)
-        if "sub" in self._primitive_set:
-            self.pset.addPrimitive(operator.sub, 2)
-        if "mul" in self._primitive_set:
-            self.pset.addPrimitive(operator.mul, 2)
-        if "_safe_div" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._safe_div, 2)
-        if "min" in self._primitive_set:
-            self.pset.addPrimitive(min, 2)
-        if "max" in self._primitive_set:
-            self.pset.addPrimitive(max, 2)
-        if "hypot" in self._primitive_set:
-            self.pset.addPrimitive(math.hypot, 2)
-        if "logaddexp" in self._primitive_set:
-            self.pset.addPrimitive(np.logaddexp, 2)
-        if "_safe_atan2" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._safe_atan2, 2)
-        if "_float_lt" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._float_lt, 2)
-        if "_float_gt" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._float_gt, 2)
-        if "_float_ge" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._float_ge, 2)
-        if "_float_le" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._float_le, 2)
-        if "_safe_fmod" in self._primitive_set:
-            self.pset.addPrimitive(GeneticAlgorithmModel._safe_fmod, 2)
+        primitive_operations = {
+            "add": (operator.add, 2),
+            "sub": (operator.sub, 2),
+            "mul": (operator.mul, 2),
+            "_safe_div": (self._safe_div, 2),
+            "min": (min, 2),
+            "max": (max, 2),
+            "hypot": (math.hypot, 2),
+            "logaddexp": (np.logaddexp, 2),
+            "_safe_atan2": (self._safe_atan2, 2),
+            "_float_lt": (self._float_lt, 2),
+            "_float_gt": (self._float_gt, 2),
+            "_float_ge": (self._float_ge, 2),
+            "_float_le": (self._float_le, 2),
+            "_safe_fmod": (self._safe_fmod, 2)
+        }
 
-        if "Constant_0" in self._terminal_set:
-            self.pset.addTerminal(0, "Constant_0")
-        if "Constant_1" in self._terminal_set:
-            self.pset.addTerminal(1, "Constant_1")
-        if "Constant_minus_1" in self._terminal_set:
-            self.pset.addTerminal(-1, "Constant_minus_1")
-        if "Pi" in self._terminal_set:
-            self.pset.addTerminal(math.pi, "Pi")
-        if "E" in self._terminal_set:
-            self.pset.addTerminal(math.e, "E")
+        # Add primitives based on the provided set
+        for primitive_name, (func, arity) in primitive_operations.items():
+            if primitive_name in self._primitive_set:
+                self.pset.addPrimitive(func, arity)
+
+        # Terminal values and their mappings
+        terminal_values = {
+            "Constant_0": 0,
+            "Constant_1": 1,
+            "Constant_minus_1": -1,
+            "Pi": math.pi,
+            "E": math.e
+        }
+
+        # Add terminals based on the provided set
+        for terminal_name, value in terminal_values.items():
+            if terminal_name in self._terminal_set:
+                self.pset.addTerminal(value, terminal_name)
 
     def _setup_toolbox(self):
         """
@@ -108,8 +144,13 @@ class GeneticAlgorithmModel:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("compile", gp.compile, pset=self.pset)
         self.toolbox.register("evaluate", self._evaluate_individual)
-        self.toolbox.register("select", tools.selTournament, tournsize=1)
         self.toolbox.register("mutate", gp.mutNodeReplacement, pset=self.pset)
+
+    @staticmethod
+    @tracker.track_runtime
+    def custom_ufunc(func, *args):
+        n_rows = len(args[0])
+        return np.array([func(*[arg[i] for arg in args]) for i in range(n_rows)])
 
     @staticmethod
     @tracker.track_runtime
@@ -241,27 +282,35 @@ class GeneticAlgorithmModel:
 
     @tracker.track_runtime
     def _evaluate_individual(self, individual, x: np.ndarray, y: np.ndarray) -> tuple:
-        """
-        Evaluates an individual in the population.
+        # Check if we're dealing with a single tree or multiple trees for classification
+        if self._num_classes == 1:
+            individual_hash = self.hash_individual(individual)
+        else:
+            # Generate a hash for the list of trees in a multi-class scenario
+            individual_hash = self.hash_tree(individual["ind"])
 
-        Args:
-            individual: Individual to evaluate.
-            x (np.ndarray): Input data.
-            y (np.ndarray): Labels.
+        # Use the hash to check the cache
+        if individual_hash in self.fitness_cache:
+            self.cache_hits += 1
+            return self.fitness_cache[individual_hash]
 
-        Returns:
-            tuple: Log loss of the individual.
-        """
+        self.cache_misses += 1
+        # Evaluate the individual
         if self._num_classes == 1:
             func = self.toolbox.compile(expr=individual)
-            # vectorized_func = np.vectorize(func)
-            # predictions = self._sigmoid(vectorized_func(*np.hsplit(X, X.shape[1])))
-            predictions = np.array([GeneticAlgorithmModel._sigmoid(func(*record)) for record in x])
+            predictions = GeneticAlgorithmModel._sigmoid(
+                GeneticAlgorithmModel.custom_ufunc(func, *[x[:, i] for i in range(x.shape[1])]))
         else:
+            # For multi-class, evaluate each tree and collect predictions
             funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
-            predictions = np.array([[func(*record) for func in funcs] for record in x])
+            predictions = np.array(
+                [GeneticAlgorithmModel.custom_ufunc(f, *[x[:, i] for i in range(x.shape[1])]) for f in funcs]).T
             predictions = softmax(predictions, axis=1)
-        return log_loss(y, predictions),
+        fitness = log_loss(y, predictions)
+
+        # Update the cache
+        self.fitness_cache[individual_hash] = (fitness,)
+        return (fitness,)
 
     def run(self, lambd: int, max_generations: int, save_checkpoint_path: str, start_checkpoint: str = "",
             save_checkpoint: bool = False) -> tuple:
@@ -334,6 +383,7 @@ class GeneticAlgorithmModel:
 
             time_list.append(time.time() - start_time)
             train_loss = self._evaluate_individual(champion, self.X_train, self.y_train)[0]
+            # print(f"LOSS: {train_loss}")
             train_losses.append(train_loss)
             test_loss = self._evaluate_individual(champion, self.X_test, self.y_test)[0]
             test_losses.append(test_loss)
@@ -343,6 +393,7 @@ class GeneticAlgorithmModel:
                                                        save_checkpoint_path)
 
         # Print the average execution time for each tracked function
+        print(f"Average execution time for custom_ufunc: {tracker.get_average_time('custom_ufunc'):.4f} seconds")
         print(f"Average execution time for _safe_div: {tracker.get_average_time('_safe_div'):.4f} seconds")
         print(f"Average execution time for _safe_atan2: {tracker.get_average_time('_safe_atan2'):.4f} seconds")
         print(f"Average execution time for _float_lt: {tracker.get_average_time('_float_lt'):.4f} seconds")
@@ -360,25 +411,15 @@ class GeneticAlgorithmModel:
         return champion, train_losses, test_losses, time_list
 
     def make_predictions_with_threshold(self, individual, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-        """
-        Makes predictions using the trained individual with a threshold for binary classification.
-
-        Args:
-            individual: Trained individual.
-            x (np.ndarray): Input data.
-            threshold (float, optional): Threshold for binary classification. Defaults to 0.5.
-
-        Returns:
-            np.ndarray: Predicted labels.
-        """
         if self._num_classes == 1:
             func = self.toolbox.compile(expr=individual)
-            predictions_raw = np.array([func(*record) for record in x])
+            predictions_raw = GeneticAlgorithmModel.custom_ufunc(func, *[x[:, i] for i in range(x.shape[1])])
             predictions = GeneticAlgorithmModel._sigmoid(predictions_raw)
             return (predictions > threshold).astype(int)
         else:
             funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
-            predictions_raw = np.array([[func(*record) for func in funcs] for record in x])
+            predictions_raw = np.array(
+                [GeneticAlgorithmModel.custom_ufunc(f, *[x[:, i] for i in range(x.shape[1])]) for f in funcs]).T
             predictions = softmax(predictions_raw, axis=1)
             return np.argmax(predictions, axis=1)
 

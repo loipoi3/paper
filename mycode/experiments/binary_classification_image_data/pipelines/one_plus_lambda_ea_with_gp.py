@@ -4,9 +4,10 @@ import pickle
 import numpy as np
 # from sklearn.model_selection import StratifiedKFold
 from tqdm import tqdm
-from code.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
+from mycode.models.one_plus_lambda_ea_with_gp_encodings import GeneticAlgorithmModel
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
+import time
+from mycode.utils import logger
 
 def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray,
                                    args) -> None:
@@ -34,6 +35,7 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     lambd = args.ea_lambda if args.ea_lambda is not None else 4
     save_checkpoint_path = args.ea_save_checkpoint_path if args.ea_save_checkpoint_path is not None else ""
 
+    start = time.time()
     # Combine and split data for cross-validation
     x = np.concatenate((x_train, x_test), axis=0)
     y = np.concatenate((y_train, y_test), axis=0)
@@ -71,16 +73,16 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
         # if fold_idx == 3:
         # champion, train_losses, test_losses, time_list, fold_f1s, fold_accuracies, fold_precisions, fold_recalls = model.run(
         #     lambd=4, max_generations=n_iterations,
-        #     save_checkpoint_path=f"/home/loipoi/bachelor-diploma/code/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}",
+        #     save_checkpoint_path=f"/home/loipoi/bachelor-diploma/mycode/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}",
         #     save_checkpoint=True,
-        #     start_checkpoint=f"/home/loipoi/bachelor-diploma/code/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}/checkpoint_gen_3999.pkl"
+        #     start_checkpoint=f"/home/loipoi/bachelor-diploma/mycode/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}/checkpoint_gen_3999.pkl"
         # )
         # else:
         #    champion, train_losses, test_losses, time_list, fold_f1s, fold_accuracies, fold_precisions, fold_recalls = model.run(
         #         lambd=4, max_generations=n_iterations,
-        #         save_checkpoint_path=f"/home/loipoi/bachelor-diploma/code/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}",
+        #         save_checkpoint_path=f"/home/loipoi/bachelor-diploma/mycode/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}",
         #         save_checkpoint=True,
-        #         start_checkpoint=f"/home/loipoi/bachelor-diploma/code/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}/checkpoint_gen_2999.pkl"
+        #         start_checkpoint=f"/home/loipoi/bachelor-diploma/mycode/experiments/binary_classification_image_data/checkpoints/cv/{fold_idx}/checkpoint_gen_2999.pkl"
         #    )
 
         overall_train_log_losses += np.array(train_losses)
@@ -116,9 +118,9 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
     avg_train_log_losses = overall_train_log_losses / n_splits
     avg_test_log_losses = overall_test_log_losses / n_splits
     avg_time_list = total_time_list / n_splits
-
+    end = time.time()
     print(
-        f"Accuracy={overall_accuracy:.4f}, Precision={overall_precision:.4f}, Recall={overall_recall:.4f}, F1-score={overall_f1_score:.4f}")
+        f"Accuracy={overall_accuracy:.4f}, Precision={overall_precision:.4f}, Recall={overall_recall:.4f}, F1-score={overall_f1_score:.4f}, Time={end-start}")
 
     results = {'train_losses': avg_train_log_losses.tolist(), 'test_losses': avg_test_log_losses.tolist(),
                'times': avg_time_list.tolist()}
@@ -132,4 +134,4 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
         json.dump(results, file, indent=4)
 
     print(
-        "Results (train loss list, test loss list, time list) are saved in the file: code/results/binary_classification_image_data/one_plus_lambda_ea_with_gp.json")
+        "Results (train loss list, test loss list, time list) are saved in the file: mycode/results/binary_classification_image_data/one_plus_lambda_ea_with_gp.json")

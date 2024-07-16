@@ -3,7 +3,7 @@ import torch.nn.functional as f
 import numpy as np
 from tqdm import tqdm
 import time
-from code.config import tracker
+from mycode.config import tracker
 
 
 class MLP:

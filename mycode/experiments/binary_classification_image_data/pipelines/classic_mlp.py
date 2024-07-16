@@ -1,38 +1,42 @@
 import json
 import os
 import time
-from sklearn.model_selection import StratifiedKFold
 import numpy as np
 from sklearn.metrics import log_loss, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.neural_network import MLPClassifier
 from tqdm import tqdm
 
 
-def run_classic_mlp(x: np.ndarray, y: np.ndarray, args) -> None:
+def run_classic_mlp(x_train: np.ndarray, x_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray, args) -> None:
     """
-    Runs a classic MLP for binary classification of tabular data.
+    Runs a classic MLP for binary classification of image data.
 
     Args:
-        x: Features.
-        y: Labels.
+        x_train: Training features.
+        x_test: Test features.
+        y_train: Training labels.
+        y_test: Test labels.
         args: Arguments for configuring the MLP and cross-validation.
     """
-    print("Classic MLP for the problem of binary classification of tabular data:")
+    print("Classic MLP for the problem of binary classification of image data:")
 
     # Configuration
     n_splits = args.n_splits
-    n_iterations = args.mlp_with_gd_n_iterations if args.mlp_with_gd_n_iterations is not None else 300
+    n_iterations = args.mlp_with_gd_n_iterations if args.mlp_with_gd_n_iterations is not None else 500
     hidden_layer_sizes = tuple(args.mlp_with_gd_hidden_layers) if args.mlp_with_gd_hidden_layers is not None else (
-        10, 15, 10)
+        15, 20, 15)
     activation = args.mlp_with_gd_activation if args.mlp_with_gd_activation is not None else "tanh"
     solver = args.mlp_with_gd_solver if args.mlp_with_gd_solver is not None else "sgd"
-    alpha = args.mlp_with_gd_alpha if args.mlp_with_gd_alpha is not None else 0.0008624588573893637
-    learning_rate_init = args.mlp_with_gd_learning_rate_init if args.mlp_with_gd_learning_rate_init is not None else 0.003641245927855662
-    learning_rate = args.mlp_with_gd_learning_rate if args.mlp_with_gd_learning_rate is not None else "adaptive"
-    batch_size = args.mlp_with_gd_batch_size if args.mlp_with_gd_batch_size is not None else 32
-    tol = args.mlp_with_gd_tol if args.mlp_with_gd_tol is not None else 1.57016158038566e-05
+    alpha = args.mlp_with_gd_alpha if args.mlp_with_gd_alpha is not None else 0.005383724166734261
+    learning_rate_init = args.mlp_with_gd_learning_rate_init if args.mlp_with_gd_learning_rate_init is not None else 0.0015898533701208645
+    learning_rate = args.mlp_with_gd_learning_rate if args.mlp_with_gd_learning_rate is not None else "invscaling"
+    batch_size = args.mlp_with_gd_batch_size if args.mlp_with_gd_batch_size is not None else 256
+    tol = args.mlp_with_gd_tol if args.mlp_with_gd_tol is not None else 0.00032994812784605145
 
-    # Cross-validation
+    # Combine and split data for cross-validation
+    x = np.concatenate((x_train, x_test), axis=0)
+    y = np.concatenate((y_train, y_test), axis=0)
     skf = StratifiedKFold(n_splits=n_splits)
 
     # Initialize metrics
@@ -110,7 +114,7 @@ def run_classic_mlp(x: np.ndarray, y: np.ndarray, args) -> None:
     results = {'train_losses': avg_train_log_losses.tolist(), 'test_losses': avg_test_log_losses.tolist(),
                'times': avg_time_list.tolist()}
 
-    destination = "./results/binary_classification_tabular_data"
+    destination = "./results/binary_classification_image_data"
     if not os.path.exists(destination):
         os.makedirs(destination)
 
@@ -119,4 +123,4 @@ def run_classic_mlp(x: np.ndarray, y: np.ndarray, args) -> None:
         json.dump(results, file, indent=4)
 
     print(
-        "Results (train loss list, test loss list, time list) are saved in the file: code/results/binary_classification_tabular_data/classic_mlp.json")
+        "Results (train loss list, test loss list, time list) are saved in the file: mycode/results/binary_classification_image_data/classic_mlp.json")
