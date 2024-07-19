@@ -52,6 +52,16 @@ def main():
                                 help='Iteration interval for displaying results')
 
     args = parser.parse_args()
+    # args.mode = "train"
+    # args.task = "binary_tabular"
+    # args.models = ["ea"]
+    # args.ea_max_generations = 200
+    # args.ea_tree_depth = 3
+    # args.ea_primitive_set = ["add", "mul", "min", "max", "logaddexp", "_safe_atan2", "_float_gt", "_float_ge", "_safe_fmod"]
+    # args.ea_terminal_set = ["Constant_1", "E"]
+    # args.ea_lambda = 2
+    # args.ea_save_checkpoint_path = ""
+    # args.n_splits = 5
 
     if args.mode == 'train':
         train(args)

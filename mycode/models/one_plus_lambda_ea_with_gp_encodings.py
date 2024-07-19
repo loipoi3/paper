@@ -142,10 +142,8 @@ class GeneticAlgorithmModel:
         # self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=self.tree_depth, max_=self.tree_depth)
         self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=2, max_=3)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
-        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("compile", gp.compile, pset=self.pset)
         self.toolbox.register("evaluate", self._evaluate_individual)
-        self.toolbox.register("select", tools.selTournament, k=15, tournsize=45)
         self.toolbox.register("mutate", gp.mutNodeReplacement, pset=self.pset)
         self.toolbox.register("mate", self._crossover)
 
@@ -319,7 +317,7 @@ class GeneticAlgorithmModel:
         return (fitness,)
 
     def run(self, lambd: int, max_generations: int, save_checkpoint_path: str, start_checkpoint: str = "",
-            save_checkpoint: bool = False, batch_size: int = 1024) -> tuple:
+            save_checkpoint: bool = False, batch_size: int = 128) -> tuple:
         """
         Runs the genetic algorithm.
 
@@ -334,7 +332,6 @@ class GeneticAlgorithmModel:
         Returns:
             tuple: Best individual, training losses, test losses, and time per generation.
         """
-
         stagnation_threshold = 100.0
         stagnation_count = 0
         full_eval_frequency = 15
@@ -362,6 +359,7 @@ class GeneticAlgorithmModel:
         epsilon = 1e-8  # Small value for float comparisons
         old_champion = champion
         generations_without_improvement = 0
+        candidates_restart = False
         for gen in tqdm(range(start_generation, max_generations), desc="Generations"):
             start_time = time.time()
             generations_without_improvement += 1
@@ -379,7 +377,10 @@ class GeneticAlgorithmModel:
 
             # Generate and evaluate candidates
             if self._num_classes == 1:
-                candidates = [self.toolbox.clone(champion) for _ in range(lambd)]
+                if not candidates_restart:
+                    candidates = [self.toolbox.clone(champion) for _ in range(lambd)]
+                else:
+                    candidates_restart = False
                 for i in range(0, len(candidates), 2):
                     if random.random() < 0.5:  # Crossover probability
                         candidates[i], candidates[i + 1] = self.toolbox.mate(candidates[i], candidates[i + 1])
@@ -388,10 +389,13 @@ class GeneticAlgorithmModel:
                     candidates[i].fitness.values = self._evaluate_individual(candidates[i], x_batch, y_batch, batch_size)
                     candidates[i + 1].fitness.values = self._evaluate_individual(candidates[i + 1], x_batch, y_batch, batch_size)
             else:
-                candidates = [
-                    {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
-                    for _ in range(lambd)
-                ]
+                if not candidates_restart:
+                    candidates = [
+                        {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
+                        for _ in range(lambd)
+                    ]
+                else:
+                    candidates_restart = False
                 for i in range(0, len(candidates), 2):
                     if random.random() < 0.5:  # Crossover probability
                         candidates[i], candidates[i + 1] = self.toolbox.mate(candidates[i], candidates[i + 1])
@@ -453,6 +457,7 @@ class GeneticAlgorithmModel:
             if stagnation_count >= stagnation_frequency:
                 print("Stagnation detected. Performing restart.")
                 candidates = self._perform_restart(champion, lambd)
+                candidates_restart = True
                 stagnation_count = 0
 
             if save_checkpoint:
@@ -521,26 +526,25 @@ class GeneticAlgorithmModel:
         # Keep the champion
         new_candidates.append(champion)
 
-        # Add some mutated versions of the champion
-        for _ in range(lambd // 3):
+        for _ in range(3 * lambd - len(new_candidates) - 1):
             if self._num_classes == 1:
                 mutated = self.toolbox.clone(champion)
-                self.toolbox.mutate(mutated)
+                for _ in range(5):
+                    self.toolbox.mutate(mutated)
                 new_candidates.append(mutated)
             else:
                 mutated = {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
-                selected_tree = random.choice(mutated["ind"])
-                self.toolbox.mutate(selected_tree)
+                for _ in range(3):
+                    selected_tree = random.choice(mutated["ind"])
+                    self.toolbox.mutate(selected_tree)
                 new_candidates.append(mutated)
 
-        # Add some completely new individuals
-        for _ in range(lambd - len(new_candidates)):
-            if self._num_classes == 1:
-                new_ind = self.toolbox.individual()
-                new_candidates.append(new_ind)
-            else:
-                new_ind = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)], "fitness": {"values": None}}
-                new_candidates.append(new_ind)
+        if self._num_classes == 1:
+            new_ind = self.toolbox.individual()
+            new_candidates.append(new_ind)
+        else:
+            new_ind = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)], "fitness": {"values": None}}
+            new_candidates.append(new_ind)
 
         return new_candidates
 
