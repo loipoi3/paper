@@ -139,18 +139,20 @@ class GeneticAlgorithmModel:
         """
         Sets up the toolbox for the genetic programming algorithm.
         """
-        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=self.tree_depth, max_=self.tree_depth)
+        # self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=self.tree_depth, max_=self.tree_depth)
+        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=2, max_=3)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("compile", gp.compile, pset=self.pset)
         self.toolbox.register("evaluate", self._evaluate_individual)
+        self.toolbox.register("select", tools.selTournament, k=15, tournsize=45)
         self.toolbox.register("mutate", gp.mutNodeReplacement, pset=self.pset)
+        self.toolbox.register("mate", self._crossover)
 
     @staticmethod
     @tracker.track_runtime
-    def custom_ufunc(func, *args):
-        n_rows = len(args[0])
-        return np.array([func(*[arg[i] for arg in args]) for i in range(n_rows)])
+    def custom_ufunc(func, x):
+        return np.array([func(*record) for record in x])
 
     @staticmethod
     @tracker.track_runtime
@@ -281,7 +283,7 @@ class GeneticAlgorithmModel:
         return 1 / (1 + np.exp(-x_clipped))
 
     @tracker.track_runtime
-    def _evaluate_individual(self, individual, x: np.ndarray, y: np.ndarray) -> tuple:
+    def _evaluate_individual(self, individual, x: np.ndarray, y: np.ndarray, batch_size: int) -> tuple:
         # Check if we're dealing with a single tree or multiple trees for classification
         if self._num_classes == 1:
             individual_hash = self.hash_individual(individual)
@@ -295,25 +297,29 @@ class GeneticAlgorithmModel:
             return self.fitness_cache[individual_hash]
 
         self.cache_misses += 1
-        # Evaluate the individual
+
+        # Randomly select a batch of data
+        # batch_indices = np.random.choice(len(x), size=batch_size, replace=False)
+        x_batch = x
+        y_batch = y
+
+        # Evaluate the individual on the selected batch
         if self._num_classes == 1:
             func = self.toolbox.compile(expr=individual)
-            predictions = GeneticAlgorithmModel._sigmoid(
-                GeneticAlgorithmModel.custom_ufunc(func, *[x[:, i] for i in range(x.shape[1])]))
+            predictions = GeneticAlgorithmModel._sigmoid(np.array([func(*record) for record in x_batch]))
         else:
             # For multi-class, evaluate each tree and collect predictions
             funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
-            predictions = np.array(
-                [GeneticAlgorithmModel.custom_ufunc(f, *[x[:, i] for i in range(x.shape[1])]) for f in funcs]).T
+            predictions = np.array([[func(*record) for func in funcs] for record in x_batch])
             predictions = softmax(predictions, axis=1)
-        fitness = log_loss(y, predictions)
+        fitness = log_loss(y_batch, predictions)
 
         # Update the cache
         self.fitness_cache[individual_hash] = (fitness,)
         return (fitness,)
 
     def run(self, lambd: int, max_generations: int, save_checkpoint_path: str, start_checkpoint: str = "",
-            save_checkpoint: bool = False) -> tuple:
+            save_checkpoint: bool = False, batch_size: int = 1024) -> tuple:
         """
         Runs the genetic algorithm.
 
@@ -323,10 +329,16 @@ class GeneticAlgorithmModel:
             save_checkpoint_path (str): Path to save checkpoints.
             start_checkpoint (str, optional): Path to start checkpoint. Defaults to "".
             save_checkpoint (bool, optional): Whether to save checkpoints. Defaults to False.
+            batch_size (int, optional): Size of the batch for evaluating individuals. Defaults to 32.
 
         Returns:
             tuple: Best individual, training losses, test losses, and time per generation.
         """
+
+        stagnation_threshold = 100.0
+        stagnation_count = 0
+        full_eval_frequency = 15
+
         if start_checkpoint != "":
             # Load from checkpoint if provided
             state = GeneticAlgorithmModel._load_checkpoint(start_checkpoint)
@@ -339,54 +351,109 @@ class GeneticAlgorithmModel:
             train_losses, test_losses, time_list = [], [], []
             if self._num_classes == 1:
                 champion = self.toolbox.individual()
-                champion.fitness.values = self._evaluate_individual(champion, self.X_train, self.y_train)
+                champion.fitness.values = self._evaluate_individual(champion, self.X_train, self.y_train, batch_size)
             else:
                 champion = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)],
                             "fitness": {"values": None}}
-                champion_fitness = self._evaluate_individual(champion, self.X_train, self.y_train)
+                champion_fitness = self._evaluate_individual(champion, self.X_train, self.y_train, batch_size)
                 champion["fitness"]["values"] = champion_fitness[0]
             start_generation = 0
-
+        test = []
+        epsilon = 1e-8  # Small value for float comparisons
+        old_champion = champion
+        generations_without_improvement = 0
         for gen in tqdm(range(start_generation, max_generations), desc="Generations"):
             start_time = time.time()
+            generations_without_improvement += 1
+
+            # Generate a batch for this generation
+            batch_indices = np.random.choice(len(self.X_train), size=batch_size, replace=False)
+            x_batch = self.X_train[batch_indices]
+            y_batch = self.y_train[batch_indices]
+
+            # Re-evaluate champion on the new batch
             if self._num_classes == 1:
-                candidates = [self.toolbox.clone(champion) for _ in range(1 + lambd)]
-                # Mutate each candidate for binary classification
-                for candidate in candidates:
-                    self.toolbox.mutate(candidate)
-                    del candidate.fitness.values
+                champion.fitness.values = self._evaluate_individual(champion, x_batch, y_batch, batch_size)
             else:
-                # Mutate a random tree in each candidate for multi-class classification
+                champion["fitness"]["values"] = self._evaluate_individual(champion, x_batch, y_batch, batch_size)[0]
+
+            # Generate and evaluate candidates
+            if self._num_classes == 1:
+                candidates = [self.toolbox.clone(champion) for _ in range(lambd)]
+                for i in range(0, len(candidates), 2):
+                    if random.random() < 0.5:  # Crossover probability
+                        candidates[i], candidates[i + 1] = self.toolbox.mate(candidates[i], candidates[i + 1])
+                    self.toolbox.mutate(candidates[i])
+                    self.toolbox.mutate(candidates[i + 1])
+                    candidates[i].fitness.values = self._evaluate_individual(candidates[i], x_batch, y_batch, batch_size)
+                    candidates[i + 1].fitness.values = self._evaluate_individual(candidates[i + 1], x_batch, y_batch, batch_size)
+            else:
                 candidates = [
-                    {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}} for _
-                    in range(1 + lambd)]
-                for candidate in candidates:
-                    selected_tree = random.choice(candidate["ind"])
+                    {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
+                    for _ in range(lambd)
+                ]
+                for i in range(0, len(candidates), 2):
+                    if random.random() < 0.5:  # Crossover probability
+                        candidates[i], candidates[i + 1] = self.toolbox.mate(candidates[i], candidates[i + 1])
+                    selected_tree = random.choice(candidates[i]["ind"])
                     self.toolbox.mutate(selected_tree)
-                    del selected_tree.fitness.values
+                    selected_tree = random.choice(candidates[i + 1]["ind"])
+                    self.toolbox.mutate(selected_tree)
+                    candidates[i]["fitness"]["values"] = self._evaluate_individual(candidates[i], x_batch, y_batch, batch_size)[0]
+                    candidates[i + 1]["fitness"]["values"] = self._evaluate_individual(candidates[i + 1], x_batch, y_batch, batch_size)[0]
 
-            # Evaluate fitness of each candidate
+            # Select the best candidate
             if self._num_classes == 1:
-                for candidate in candidates:
-                    candidate.fitness.values = self._evaluate_individual(candidate, self.X_train, self.y_train)
-            else:
-                for candidate in candidates:
-                    candidate["fitness"]["values"] = self._evaluate_individual(candidate, self.X_train, self.y_train)[0]
-
-            candidates.append(champion)
-            # Select the best candidate as the new champion
-            if self._num_classes == 1:
-                champion = tools.selBest(candidates, 1)[0]
+                best_candidate = tools.selBest(candidates, 1)[0]
+                is_better = best_candidate.fitness.values[0] < champion.fitness.values[0] - epsilon
+                if is_better:
+                    champion = best_candidate
             else:
                 sorted_list = sorted(candidates, key=lambda x: x["fitness"]["values"])
-                champion = sorted_list[0]
+                best_candidate = sorted_list[0]
+                is_better = best_candidate["fitness"]["values"] < champion["fitness"]["values"] - epsilon
+                if is_better:
+                    champion = best_candidate
+
+            test.append(is_better)
+
+            # Periodically evaluate on full dataset
+            if gen % full_eval_frequency == 0:
+                if self._num_classes == 1:
+                    full_fitness = self._evaluate_individual_cv(champion, self.X_train, self.y_train)
+                    champion.fitness.values = full_fitness
+                else:
+                    full_fitness = self._evaluate_individual_cv(champion, self.X_train, self.y_train)
+                    champion["fitness"]["values"] = full_fitness[0]
+
 
             time_list.append(time.time() - start_time)
-            train_loss = self._evaluate_individual(champion, self.X_train, self.y_train)[0]
-            # print(f"LOSS: {train_loss}")
+
+            train_loss = self._evaluate_individual(champion, self.X_train, self.y_train, batch_size)[0]
+            print(f"Train Loss: {train_loss}")
             train_losses.append(train_loss)
-            test_loss = self._evaluate_individual(champion, self.X_test, self.y_test)[0]
+            test_loss = self._evaluate_individual(champion, self.X_test, self.y_test, batch_size)[0]
+            print(f"Test Loss: {test_loss}")
             test_losses.append(test_loss)
+
+            if generations_without_improvement <250:
+                stagnation_frequency = 15
+            else:
+                stagnation_frequency = 10
+
+            # Check for stagnation
+            if len(train_losses) >= stagnation_frequency:
+                loss_diff = abs(train_losses[-1] - train_losses[-stagnation_frequency])
+                if loss_diff < stagnation_threshold:
+                    stagnation_count += 1
+                else:
+                    stagnation_count = 0
+
+            # If stagnation is detected, perform a restart
+            if stagnation_count >= stagnation_frequency:
+                print("Stagnation detected. Performing restart.")
+                candidates = self._perform_restart(champion, lambd)
+                stagnation_count = 0
 
             if save_checkpoint:
                 GeneticAlgorithmModel._save_checkpoint(champion, gen, train_losses, test_losses, time_list,
@@ -407,21 +474,75 @@ class GeneticAlgorithmModel:
 
         # Reset the execution times
         tracker.execution_times = {}
-
-        return champion, train_losses, test_losses, time_list
+        print(test)
+        return champion, train_losses, test_losses, time_list, old_champion
 
     def make_predictions_with_threshold(self, individual, x: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         if self._num_classes == 1:
             func = self.toolbox.compile(expr=individual)
-            predictions_raw = GeneticAlgorithmModel.custom_ufunc(func, *[x[:, i] for i in range(x.shape[1])])
+            predictions_raw = GeneticAlgorithmModel.custom_ufunc(func, x)
             predictions = GeneticAlgorithmModel._sigmoid(predictions_raw)
             return (predictions > threshold).astype(int)
         else:
             funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
-            predictions_raw = np.array(
-                [GeneticAlgorithmModel.custom_ufunc(f, *[x[:, i] for i in range(x.shape[1])]) for f in funcs]).T
+            predictions_raw = np.array([GeneticAlgorithmModel.custom_ufunc(f, x) for f in funcs]).T
             predictions = softmax(predictions_raw, axis=1)
             return np.argmax(predictions, axis=1)
+
+    def _evaluate_individual_cv(self, individual, x: np.ndarray, y: np.ndarray, n_splits=5):
+        from sklearn.model_selection import KFold
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        fitness_scores = []
+
+        for train_index, val_index in kf.split(x):
+            x_train, x_val = x[train_index], x[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            if self._num_classes == 1:
+                func = self.toolbox.compile(expr=individual)
+                predictions = np.array([func(*record) for record in x_val])
+            else:
+                funcs = [self.toolbox.compile(expr=tree) for tree in individual["ind"]]
+                predictions = np.array([[func(*record) for func in funcs] for record in x_val])
+                predictions = softmax(predictions, axis=1)
+
+            fitness = log_loss(y_val, predictions)
+            fitness_scores.append(fitness)
+
+        return (np.mean(fitness_scores),)
+
+    def _perform_restart(self, champion, lambd):
+        """
+        Performs a restart by creating a new population with some of the best individuals
+        and some newly generated individuals.
+        """
+        new_candidates = []
+
+        # Keep the champion
+        new_candidates.append(champion)
+
+        # Add some mutated versions of the champion
+        for _ in range(lambd // 3):
+            if self._num_classes == 1:
+                mutated = self.toolbox.clone(champion)
+                self.toolbox.mutate(mutated)
+                new_candidates.append(mutated)
+            else:
+                mutated = {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
+                selected_tree = random.choice(mutated["ind"])
+                self.toolbox.mutate(selected_tree)
+                new_candidates.append(mutated)
+
+        # Add some completely new individuals
+        for _ in range(lambd - len(new_candidates)):
+            if self._num_classes == 1:
+                new_ind = self.toolbox.individual()
+                new_candidates.append(new_ind)
+            else:
+                new_ind = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)], "fitness": {"values": None}}
+                new_candidates.append(new_ind)
+
+        return new_candidates
 
     @staticmethod
     def _save_checkpoint(champion, generation: int, train_losses: list, test_losses: list, time_list: list,
@@ -458,3 +579,19 @@ class GeneticAlgorithmModel:
         with open(filename, 'rb') as cp_file:
             state = pickle.load(cp_file)
         return state
+
+    def _crossover(self, parent1, parent2):
+        """
+        Performs crossover between two individuals.
+        """
+        if self._num_classes == 1:
+            child1, child2 = gp.cxOnePoint(parent1, parent2)
+            return child1, child2
+        else:
+            child1 = {"ind": [], "fitness": {"values": None}}
+            child2 = {"ind": [], "fitness": {"values": None}}
+            for tree1, tree2 in zip(parent1["ind"], parent2["ind"]):
+                child1_tree, child2_tree = gp.cxOnePoint(tree1, tree2)
+                child1["ind"].append(child1_tree)
+                child2["ind"].append(child2_tree)
+            return child1, child2

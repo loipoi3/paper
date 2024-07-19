@@ -27,27 +27,30 @@ def run_one_plus_lambda_ea_with_gp(x_train: np.ndarray, x_test: np.ndarray, y_tr
                                                                                            "_safe_div", "min", "max",
                                                                                            "hypot", "logaddexp"]
     terminal_set = list(args.ea_terminal_set) if args.ea_terminal_set is not None else ["Constant_0", "Constant_1",
-                                                                                        "Constant_minus_1"]
+                                                                                        "Constant_minus_1", "Pi", "E"]
     lambd = args.ea_lambda if args.ea_lambda is not None else 4
     save_checkpoint_path = args.ea_save_checkpoint_path if args.ea_save_checkpoint_path is not None else ""
 
     start = time.time()
-
     # Initialize the Genetic Algorithm model
     model = GeneticAlgorithmModel(x_train, y_train, x_test, y_test, tree_depth=tree_depth,
                                   primitive_set=primitive_set, terminal_set=terminal_set,
                                   num_classes=len(np.unique(y_train)))
-    champion, train_losses, test_losses, time_list = model.run(lambd=lambd, max_generations=max_generations,
+    champion, train_losses, test_losses, time_list, old_champion = model.run(lambd=lambd, max_generations=max_generations,
                                                                save_checkpoint_path=save_checkpoint_path)
 
     y_pred_test = model.make_predictions_with_threshold(champion, x_test)
+    y_pred_test_old = model.make_predictions_with_threshold(old_champion, x_test)
     accuracy_test = accuracy_score(y_test, y_pred_test)
+    accuracy_test_old = accuracy_score(y_test, y_pred_test_old)
+    print(f"Learn accuracy: {accuracy_test} \n\n Old accuracy: {accuracy_test_old}")
     precision_test = precision_score(y_test, y_pred_test, average='weighted', zero_division=0)
     recall_test = recall_score(y_test, y_pred_test, average='weighted')
     f1_test = f1_score(y_test, y_pred_test, average='weighted')
+
     end = time.time()
     print(
-        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}, Time: {end-start}")
+        f"Accuracy: {accuracy_test:.4f}, Precision: {precision_test:.4f}, Recall: {recall_test:.4f}, F1-score: {f1_test:.4f}, Time: {end-start}, Hits: {model.cache_hits}, Misses: {model.cache_misses}")
 
     results = {'train_losses': train_losses, 'test_losses': test_losses, 'times': time_list}
 
