@@ -13,7 +13,7 @@ import hashlib
 import struct
 from mycode.config import tracker
 
-seed_value = 42
+seed_value = 1
 random.seed(seed_value)
 np.random.seed(seed_value)
 
@@ -317,7 +317,7 @@ class GeneticAlgorithmModel:
         return (fitness,)
 
     def run(self, lambd: int, max_generations: int, save_checkpoint_path: str, start_checkpoint: str = "",
-            save_checkpoint: bool = False, batch_size: int = 128) -> tuple:
+            save_checkpoint: bool = False, batch_size: int = 1024) -> tuple:
         """
         Runs the genetic algorithm.
 
@@ -526,7 +526,7 @@ class GeneticAlgorithmModel:
         # Keep the champion
         new_candidates.append(champion)
 
-        for _ in range(3 * lambd - len(new_candidates) - 1):
+        for _ in range(8): # 8, 12, 6
             if self._num_classes == 1:
                 mutated = self.toolbox.clone(champion)
                 for _ in range(5):
@@ -534,17 +534,18 @@ class GeneticAlgorithmModel:
                 new_candidates.append(mutated)
             else:
                 mutated = {"ind": [self.toolbox.clone(tree) for tree in champion["ind"]], "fitness": {"values": None}}
-                for _ in range(3):
+                for _ in range(2): # 7 400, 6, 8
                     selected_tree = random.choice(mutated["ind"])
                     self.toolbox.mutate(selected_tree)
                 new_candidates.append(mutated)
 
-        if self._num_classes == 1:
-            new_ind = self.toolbox.individual()
-            new_candidates.append(new_ind)
-        else:
-            new_ind = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)], "fitness": {"values": None}}
-            new_candidates.append(new_ind)
+        for _ in range(3): # 1, 1, 3
+            if self._num_classes == 1:
+                new_ind = self.toolbox.individual()
+                new_candidates.append(new_ind)
+            else:
+                new_ind = {"ind": [self.toolbox.individual() for _ in range(self._num_classes)], "fitness": {"values": None}}
+                new_candidates.append(new_ind)
 
         return new_candidates
 
